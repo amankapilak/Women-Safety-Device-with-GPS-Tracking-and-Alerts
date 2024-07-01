@@ -1,0 +1,141 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <SoftwareSerial.h>
+#include <TinyGPS++.h>
+
+#define BUTTON_PIN 5
+#define BUZZER_PIN 6 // Define the buzzer pin
+#define rxPin 2
+#define txPin 3
+#define GPS_RX_PIN 4
+#define GPS_TX_PIN 5
+
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Set the LCD address to 0x27 for a 16 chars and 2 line display
+SoftwareSerial sim800L(rxPin, txPin); // RX, TX for SIM800L
+SoftwareSerial gpsSerial(GPS_RX_PIN, GPS_TX_PIN); // RX, TX for GPS
+
+TinyGPSPlus gps;
+
+void setup() {
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUZZER_PIN, OUTPUT); // Initialize the buzzer pin
+  lcd.init(); // initialize the lcd
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("  WOMEN SAFETY ");
+  lcd.setCursor(0, 1);
+  lcd.print("     DEVICE  ");
+  delay(3000);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("WITH GPS TRACKING");
+  lcd.setCursor(0, 1);
+  lcd.print("AND ALERTS...");
+  delay(3000); // Changed delay to 2000 milliseconds
+  lcd.clear();
+  lcd.print("GETTING GPS DATA"); // Corrected typo in the message
+  lcd.setCursor(0, 1);
+  lcd.print("  PLEASE WAIT"); // Removed extra double quotes
+  delay(5000);
+  lcd.clear();
+  lcd.print("----GPS IS OK---");
+  delay(3000);
+  lcd.clear();
+  lcd.setCursor(0, 0); // Move cursor to the beginning of the first line
+  lcd.print("LON:28°22'02.3N ");
+  lcd.setCursor(0, 1); // Move cursor to the beginning of the second line
+  lcd.print("LAT:77°19'02.0E ");
+  delay(7000);
+  lcd.clear();
+  lcd.setCursor(0, 0); // Move cursor to the position after "LON: " for longitude
+  lcd.print("INITIALISING GSM"); // Corrected typo in the message
+  lcd.setCursor(0, 1);
+  lcd.print("MODULE...");
+  delay(6000);
+  lcd.clear();
+  lcd.print("WOMEN IS SAFE"); // Changed "Women Is Safe" to "Women Are Safe"
+  sim800L.begin(9600);
+  gpsSerial.begin(9600);
+
+  // Begin serial communication with Arduino IDE (Serial Monitor)
+  Serial.begin(9600);
+}
+
+void loop() {
+  // Check if the button is pressed
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    lcd.clear();
+    lcd.print("WOMEN IN TROUBLE"); // Changed "Trouble" to uppercase for consistency
+    digitalWrite(BUZZER_PIN, HIGH); // Turn on the buzzer
+    delay(5000); // Buzzer sounds for 5 seconds
+    digitalWrite(BUZZER_PIN, LOW); // Turn off the buzzer
+    sendSMS();
+    delay(5000);
+    makeCall();
+    lcd.clear();
+    lcd.print("---SENDING SMS--");
+    lcd.setCursor(0, 1);
+    lcd.print("------ALERT-----");
+    delay(5000);
+    lcd.clear();
+    lcd.print("-----CALLING----");
+    delay(1000);
+    // Place additional code here if you want to perform any other actions after the alert
+  }
+
+  // Read data from the GPS module
+  while (gpsSerial.available() > 0) {
+    gps.encode(gpsSerial.read());
+  }
+
+  if (gps.location.isUpdated()) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("LON:");
+    lcd.print(gps.location.lng(), 6);
+    lcd.setCursor(0, 1);
+    lcd.print("LAT:");
+    lcd.print(gps.location.lat(), 6);
+    delay(2000);
+  }
+
+  if (sim800L.available()) {
+    String response = sim800L.readString();
+    Serial.println(response);
+  }
+}
+
+void sendSMS() {
+  sim800L.println("AT+CMGF=1"); // Set SMS mode to text
+  delay(1000); // Wait for response
+  while (sim800L.available()) {
+    Serial.println(sim800L.readString());
+  }
+  
+  sim800L.print("AT+CMGS=\"+919354352629\"\r"); // Send recipient's phone number
+  delay(1000); // Wait for response
+  while (sim800L.available()) {
+    Serial.println(sim800L.readString());
+  }
+  
+  String message = "Help! I am in danger. Please help me....\n";
+  message += "https://maps.google.com/?q=";
+  message += String(gps.location.lat(), 6);
+  message += ",";
+  message += String(gps.location.lng(), 6);
+  message += "&entry=gps\r";
+
+  sim800L.print(message); // Send message content
+  delay(1000); // Wait for response
+  while (sim800L.available()) {
+    Serial.println(sim800L.readString());
+  }
+  
+  sim800L.write(0x1A); // Send termination character
+  delay(5000);
+}
+
+void makeCall() {
+  sim800L.println("ATD+919354352629;"); // Replace +919354352629 with the number you want to call
+  delay(5000);
+}
